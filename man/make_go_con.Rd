@@ -4,35 +4,42 @@
 \alias{make_go_con}
 \title{Establish a connection to the GO semsql database}
 \usage{
-make_go_con(ontology = "go")
+make_go_con(ontology = "go", backend = c("auto", "parquet", "sqlite"))
 }
 \arguments{
-\item{ontology}{character scalar passed to
-\code{ontoProc2::semsql_connect()}.  Default \code{"go"}.}
+\item{ontology}{character scalar. Default \code{"go"}.}
+
+\item{backend}{one of:
+\describe{
+\item{\code{"auto"}}{use parquet if \code{\link{has_parquet_cache}}
+returns \code{TRUE}, otherwise SQLite}
+\item{\code{"parquet"}}{require parquet cache — error if absent}
+\item{\code{"sqlite"}}{use SQLite via DuckDB scanner and materialize
+hot tables into native DuckDB storage}
+}}
 }
 \value{
-\code{NULL} invisibly.  The connection is stored in the package
-cache; use \code{\link{disconnect_go}} to close it.
+\code{NULL} invisibly.
 }
 \description{
-Retrieves the GO semsql SQLite file path via
-\code{ontoProc2::semsql_connect()} (which manages caching through
-BiocFileCache), then attaches it to an in-process DuckDB instance.
-The connection is stored in a private package cache and reused by all
-subsequent calls to \code{\link{go_terms}}, \code{\link{lookup_curie}},
-\code{\link{go_ancestors}}, etc.
-}
-\details{
-This function must be called explicitly — it is intentionally not invoked
-in \code{.onLoad} because \code{semsql_connect()} may trigger a
-BiocFileCache download, which must always be user-initiated.
+Retrieves GO data either from a local parquet cache or from the semsql
+SQLite file managed by \code{ontoProc2::semsql_connect()}, then loads
+it into an in-process DuckDB instance.
 }
 \examples{
+# auto selects parquet if available, SQLite otherwise
 make_go_con()
 go_connection_active()
 disconnect_go()
 
+# force parquet (must have run build_parquet_cache() first)
+if (has_parquet_cache()) {
+  make_go_con(backend = "parquet")
+  disconnect_go()
+}
+
 }
 \seealso{
-\code{\link{disconnect_go}}, \code{\link{go_connection_active}}
+\code{\link{build_parquet_cache}}, \code{\link{has_parquet_cache}},
+\code{\link{disconnect_go}}
 }

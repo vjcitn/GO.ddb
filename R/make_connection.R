@@ -1,94 +1,119 @@
-# make_connection.R — connection establishment and teardown
-
 #' Establish a connection to the GO semsql database
 #'
-#' Retrieves the GO semsql SQLite file path via
-#' \code{ontoProc2::semsql_connect()} (which manages caching through
-#' BiocFileCache), then attaches it to an in-process DuckDB instance.
-#' The connection is stored in a private package cache and reused by all
-#' subsequent calls to \code{\link{go_terms}}, \code{\link{lookup_curie}},
-#' \code{\link{go_ancestors}}, etc.
+#' Retrieves GO data either from a local parquet cache or from the semsql
+#' SQLite file managed by \code{ontoProc2::semsql_connect()}, then loads
+#' it into an in-process DuckDB instance.
 #'
-#' This function must be called explicitly — it is intentionally not invoked
-#' in \code{.onLoad} because \code{semsql_connect()} may trigger a
-#' BiocFileCache download, which must always be user-initiated.
+#' @param ontology character scalar. Default \code{"go"}.
+#' @param backend one of:
+#'   \describe{
+#'     \item{\code{"auto"}}{use parquet if \code{\link{has_parquet_cache}}
+#'       returns \code{TRUE}, otherwise SQLite}
+#'     \item{\code{"parquet"}}{require parquet cache — error if absent}
+#'     \item{\code{"sqlite"}}{use SQLite via DuckDB scanner and materialize
+#'       hot tables into native DuckDB storage}
+#'   }
 #'
-#' @param ontology character scalar passed to
-#'   \code{ontoProc2::semsql_connect()}.  Default \code{"go"}.
-#'
-#' @return \code{NULL} invisibly.  The connection is stored in the package
-#'   cache; use \code{\link{disconnect_go}} to close it.
-#'
-#' @seealso \code{\link{disconnect_go}}, \code{\link{go_connection_active}}
+#' @return \code{NULL} invisibly.
 #'
 #' @examples
+#' # auto selects parquet if available, SQLite otherwise
 #' make_go_con()
 #' go_connection_active()
 #' disconnect_go()
 #'
+#' # force parquet (must have run build_parquet_cache() first)
+#' if (has_parquet_cache()) {
+#'   make_go_con(backend = "parquet")
+#'   disconnect_go()
+#' }
+#'
+#' @seealso \code{\link{build_parquet_cache}}, \code{\link{has_parquet_cache}},
+#'   \code{\link{disconnect_go}}
+#'
 #' @export
-make_go_con <- function(ontology = "go") {
+make_go_con <- function(ontology = "go",
+                        backend  = c("auto", "parquet", "sqlite")) {
+  backend <- match.arg(backend)
+
+  # If already connected, return silently — make_go_con() is safe to call
+  # at the top of any script or example without checking first.
+  if (!is.null(.cache) &&
+      exists("con", envir = .cache, inherits = FALSE) &&
+      DBI::dbIsValid(.cache$con))
+    return(invisible(NULL))
+
+
   if (!is.null(.cache) &&
       exists("con", envir = .cache) &&
       DBI::dbIsValid(.cache$con)) {
     message(
-      "GO connection already active (schema = '", .cache$schema, "'). ",
+      "GO connection already active (schema = 'main', ",
+      "backend = '", .cache$backend, "'). ",
       "Call disconnect_go() first to establish a new connection."
     )
     return(invisible(NULL))
   }
 
-  gcon  <- ontoProc2::semsql_connect(ontology = ontology)
-  gpath <- gcon@db_path
+  # Resolve backend
+  if (backend == "auto")
+    backend <- if (has_parquet_cache(ontology)) "parquet" else "sqlite"
 
-  if (!file.exists(gpath))
+  if (backend == "parquet" && !has_parquet_cache(ontology))
     stop(
-      "semsql_connect() returned a path that does not exist: ", gpath,
+      "No parquet cache found for ontology '", ontology, "'.\n",
+      "Run build_parquet_cache() first.",
       call. = FALSE
     )
 
-  con     <- DBI::dbConnect(duckdb::duckdb())
-  sch_id  <- DBI::dbQuoteIdentifier(con, ontology)
-  gpath_l <- DBI::dbQuoteLiteral(con, gpath)
+  con <- DBI::dbConnect(duckdb::duckdb())
 
   tryCatch({
-    DBI::dbExecute(con, "INSTALL sqlite; LOAD sqlite;")
-    DBI::dbExecute(con,
-      paste("ATTACH", gpath_l, "AS", sch_id, "(TYPE sqlite, READ_ONLY)")
-    )
+    if (backend == "parquet") {
+      message("Loading GO from parquet cache ...")
+      t0 <- proc.time()["elapsed"]
+      .attach_parquet(con, ontology)
+      elapsed <- round(proc.time()["elapsed"] - t0, 1)
+      message(sprintf("  -> ready in %.1fs", elapsed))
+
+    } else {
+      # SQLite path
+      gcon        <- ontoProc2::semsql_connect(ontology = ontology)
+      sqlite_path <- gcon@db_path
+
+      if (!file.exists(sqlite_path))
+        stop("semsql_connect() returned path that does not exist: ",
+             sqlite_path, call. = FALSE)
+
+      message("Attaching GO semsql SQLite ...")
+      .attach_sqlite(con, ontology, sqlite_path)
+      materialize_hot_tables(con)
+    }
   }, error = function(e) {
     DBI::dbDisconnect(con, shutdown = TRUE)
-    stop(
-      "Failed to attach GO semsql database: ", conditionMessage(e),
-      call. = FALSE
-    )
+    stop(conditionMessage(e), call. = FALSE)
   })
 
-  # Validate required base tables using duckdb_tables().
-  # - duckdb_views() fails on semsql SQLite: DuckDB cannot parse the UNION
-  #   syntax in owl_reified_axiom.
-  # - sqlite_master is not exposed by DuckDB for attached databases.
-  present <- DBI::dbGetQuery(con,
-    glue::glue_sql(
-      "SELECT table_name FROM duckdb_tables() WHERE database_name = {ontology}",
-      .con = con
-    )
+  # Validate hot tables landed in main
+  present <- DBI::dbGetQuery(
+    con,
+    "SELECT table_name FROM duckdb_tables() WHERE schema_name = 'main'"
   )$table_name
 
   required <- c("statements", "entailed_edge")
   missing  <- setdiff(required, present)
-  if (length(missing)) {
-    DBI::dbDisconnect(con, shutdown = TRUE)
+  if (length(missing))
     stop(
-      "GO semsql database missing required base tables: ",
+      "Required tables missing from main schema after loading: ",
       paste(missing, collapse = ", "),
       call. = FALSE
     )
-  }
 
-  .cache$con    <- con
-  .cache$schema <- ontology
-  message("GO semsql connection established (schema = '", ontology, "').")
+  .cache$con     <- con
+  .cache$schema  <- "main"
+  .cache$backend <- backend
+
+  message("GO connection ready (backend = '", backend, "').")
   invisible(NULL)
 }
 
@@ -100,19 +125,19 @@ make_go_con <- function(ontology = "go") {
 #'
 #' @return \code{NULL} invisibly.
 #'
-#' @seealso \code{\link{make_go_con}}, \code{\link{go_connection_active}}
-#'
 #' @examples
-#' make_go_con()
-#' disconnect_go()
-#' go_connection_active()
+#' GO.ddb::make_go_con()
+#' GO.ddb::disconnect_go()
+#' GO.ddb::go_connection_active()
+#'
+#' @seealso \code{\link{make_go_con}}, \code{\link{go_connection_active}}
 #'
 #' @export
 disconnect_go <- function() {
-  if (!is.null(.cache) && exists("con", envir = .cache)) {
+  if (!is.null(.cache) && exists("con", envir = .cache, inherits = FALSE)) {
     if (DBI::dbIsValid(.cache$con))
       DBI::dbDisconnect(.cache$con, shutdown = TRUE)
-    rm("con", "schema", envir = .cache)
+    rm(list = ls(.cache, all.names = TRUE), envir = .cache)
     message("GO semsql connection closed.")
   } else {
     message("No active GO connection to close.")

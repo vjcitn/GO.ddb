@@ -1,6 +1,6 @@
 Package: GO.ddb
 Title: Tidy Interface to GO Semantic SQL via DuckDB
-Version: 0.0.2
+Version: 0.0.3
 Authors@R: 
     c(person("Vincent", "Carey", email = "stvjc@channing.harvard.edu",
            role = c("aut", "cre"),
@@ -22,9 +22,8 @@ Imports:
     duckdb,
     DBI,
     dplyr,
-    dbplyr,
     glue,
-    methods, utils
+    BiocFileCache
 Suggests:
     testthat (>= 3.0.0),
     DT,

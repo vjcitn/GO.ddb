@@ -13,7 +13,7 @@ test_that("make_go_con() establishes a connection", {
 
 test_that("make_go_con() is idempotent — second call emits message, not error", {
   live_con()
-  expect_message(make_go_con(), "already active")
+  expect_invisible(make_go_con())
   expect_true(go_connection_active())
 })
 

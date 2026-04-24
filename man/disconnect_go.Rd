@@ -14,9 +14,9 @@ Disconnects the DuckDB instance and clears the package cache.  The next
 call to any query function will trigger reconnection automatically.
 }
 \examples{
-make_go_con()
-disconnect_go()
-go_connection_active()
+GO.ddb::make_go_con()
+GO.ddb::disconnect_go()
+GO.ddb::go_connection_active()
 
 }
 \seealso{
