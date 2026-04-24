@@ -1,0 +1,132 @@
+---
+title: "GO.ddb overview"
+author: "Vincent J. Carey, stvjc at channing.harvard.edu"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{GO.ddb overview}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    highlight: pygments
+    number_sections: yes
+    theme: united
+    toc: yes
+---
+
+# Introduction
+
+We aim to provide a modern interface to Gene Ontology.
+We use the Semantic SQL serialization in SQLite produced
+by the INCAtools project.
+
+# Basic setup
+
+Tidyverse practices are supported.  Within the database,
+the GO CURIE is in the `id` column.
+```{r lk1, message=FALSE}
+library(GO.ddb)
+library(dplyr)
+go_terms()
+```
+
+# Lookups
+
+```{r dolook}
+go_terms() |> head() |> collect() |> names()
+go_terms() |> filter(label %like% "%apopto%")
+go_terms() |> filter(id %in% c("GO:0042267", "GO:0042268", 
+     "GO:0042269", "GO:0042270")) |> select(id, ontology, label)
+```
+
+A shortcut for term lookup:
+```{r docur}
+lookup_curie(c("GO:0006953", "GO:0001795"))
+```
+
+# Traversals of GO
+
+## Ancestor (generalization) retrieval
+
+`go_ancestors` utilizes the pre-computed 'entailed_edge' table
+in the Semantic SQL representation of GO.
+
+```{r doanc}
+go_ancestors("GO:0006954", relations = GO_RELATIONS["is_a"]) |>
+  inner_join(
+    go_terms() |> select(ancestor_id = id, label),
+    by = "ancestor_id"
+  )
+```
+
+## Descendant
+
+```{r dodesc}
+go_descendants("GO:0006954", relations = GO_RELATIONS["is_a"]) |>
+  inner_join(
+    go_terms() |> select(descendant_id = id, label),
+    by = "descendant_id"
+  )
+```
+
+# Cross-ontology activities
+
+## Quick overview of RDF and ontological entailments
+
+Briefly, the fundamental representation of Gene Ontology
+is RDF (Resource Description Format).  Each ontological
+assertion (statement) has the form of an ordered triple (subject, predicate,
+object).
+
+All the implications of statements in Gene Ontology are
+available in the Semantic SQL representation.  "Implication"
+here refers to derivability in a logical system implemented
+in an OWL reasoner.  See [OAK (ontology access kit)](https://incatools.github.io/ontology-access-kit/guide/relationships-and-graphs.html#further-notes-on-owl-and-graph-projection)
+for more background.
+
+## Common predicates
+
+To express certain concepts *precisely*, references to external ontologies
+are employed.  
+
+```{r lkee}
+go_entailed_edges() |> select(predicate) |> 
+   group_by(predicate) |> summarise(n=n())
+```
+
+## Decoding external predicate CURIEs
+
+We can use ontoProc2 to help resolve details
+of predicates used to state relationships beyond those
+related to class membership ("is a", "part of").
+
+### Learning about an ontology
+
+The following code probes the first 20 statements
+available in the Semantic SQL representation of BSPO.
+There is in principle no guarantee that such a search
+would yield useful records.
+
+```{r trybs, message=FALSE}
+library(ontoProc2)
+library(DT)
+bspo_ref = semsql_connect(ontology="bspo")
+bspo_ref
+tbl(bspo_ref@con, "statements") |> head(20) |>
+   collect() |> datatable()
+```
+
+### Statements related to a selected CURIE 
+
+In this example we retrieve all statements with *subject*
+"BSPO:0000098", which occurs with some frequency as a *predicate* in the
+entailments of GO.
+
+```{r trybs2, message=FALSE}
+library(ontoProc2)
+library(DT)
+bspo_ref = semsql_connect(ontology="bspo")
+bspo_ref
+tbl(bspo_ref@con, "statements") |> filter(subject=="BSPO:0000098")  |> 
+   collect() |> datatable()
+```
