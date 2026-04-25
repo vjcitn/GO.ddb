@@ -14,5 +14,6 @@ utils::globalVariables(c(
   "ancestor_id",
   "descendant_id",
   # operator translated by dbplyr to SQL LIKE
-  "%like%"
+  "%like%",
+  "scope"
 ))

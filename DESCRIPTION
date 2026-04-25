@@ -1,6 +1,6 @@
 Package: GO.ddb
 Title: Tidy Interface to GO Semantic SQL via DuckDB
-Version: 0.0.3
+Version: 0.0.4
 Authors@R: 
     c(person("Vincent", "Carey", email = "stvjc@channing.harvard.edu",
            role = c("aut", "cre"),
