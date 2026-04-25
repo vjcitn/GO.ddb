@@ -44,6 +44,7 @@ has_parquet_cache <- function(ontology = "go") {
 #' @param sqlite_path character scalar path to the semsql SQLite file.
 #'   If \code{NULL} (default), retrieved via \code{ontoProc2::semsql_connect()}.
 #' @param ontology character scalar. Default \code{"go"}.
+#' @param out_dir path to desired folder for parquet cache management
 #' @param tables character vector of table names to convert. Default covers
 #'   the two tables the package actively queries.
 #'
@@ -58,6 +59,7 @@ has_parquet_cache <- function(ontology = "go") {
 build_parquet_cache <- function(
     sqlite_path = NULL,
     ontology    = "go",
+    out_dir     = NULL,
     tables      = c("statements", "entailed_edge", "term_association")) {
 
   if (is.null(sqlite_path)) {
@@ -68,7 +70,9 @@ build_parquet_cache <- function(
   if (!file.exists(sqlite_path))
     stop("SQLite file not found: ", sqlite_path, call. = FALSE)
 
-  out_dir <- .parquet_cache_dir(ontology)
+  if (is.null(out_dir))
+    out_dir <- .parquet_cache_dir(ontology)
+
   if (!dir.exists(out_dir))
     dir.create(out_dir, recursive = TRUE)
 

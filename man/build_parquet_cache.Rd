@@ -7,6 +7,7 @@
 build_parquet_cache(
   sqlite_path = NULL,
   ontology = "go",
+  out_dir = NULL,
   tables = c("statements", "entailed_edge", "term_association")
 )
 }
@@ -15,6 +16,8 @@ build_parquet_cache(
 If \code{NULL} (default), retrieved via \code{ontoProc2::semsql_connect()}.}
 
 \item{ontology}{character scalar. Default \code{"go"}.}
+
+\item{out_dir}{path to desired folder for parquet cache management}
 
 \item{tables}{character vector of table names to convert. Default covers
 the two tables the package actively queries.}
