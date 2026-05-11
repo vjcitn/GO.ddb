@@ -1,6 +1,6 @@
 Package: GO.ddb
 Title: Tidy Interface to GO Semantic SQL via DuckDB
-Version: 0.0.5
+Version: 0.99.0
 Authors@R: 
     c(person("Vincent", "Carey", email = "stvjc@channing.harvard.edu",
            role = c("aut", "cre"),
@@ -34,5 +34,3 @@ Suggests:
     hedgehog
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-Remotes:
-    vjcitn/ontoProc2
