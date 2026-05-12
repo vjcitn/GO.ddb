@@ -18,12 +18,27 @@ output:
 
 We aim to provide a modern interface to Gene Ontology.
 We use the Semantic SQL serialization in SQLite produced
-by the INCAtools project.
+by the [INCAtools project](https://github.com/INCATools/semantic-sql).
+
+This package can be compared to [GO.db](https://bioconductor.org/packages/GO.db).  GO.ddb
+aims to capitalize on modern approaches to ontology management and data representation.
+
+# Installation
+
+Before Bioconductor 3.24 is released, use
+```
+BiocManager::install("vjcitn/GO.ddb")
+```
+
+With Bioconductor versions 3.24 and beyond, use
+```
+BiocManager::install("GO.ddb")
+```
 
 # Basic setup
 
 Tidyverse practices are supported.  Within the database,
-the GO CURIE is in the `id` column.
+the GO [CURIE](https://en.wikipedia.org/wiki/CURIE) is in the `id` column.
 ```{r lk1, message=FALSE}
 library(GO.ddb)
 library(dplyr)
@@ -34,9 +49,9 @@ go_terms()
 
 ```{r dolook}
 go_terms() |> head() |> collect() |> names()
-go_terms() |> filter(label %like% "%apopto%")
-go_terms() |> filter(id %in% c("GO:0042267", "GO:0042268", 
-     "GO:0042269", "GO:0042270")) |> select(id, ontology, label)
+go_terms() |> dplyr::filter(label %like% "%apopto%")
+go_terms() |> dplyr::filter(id %in% c("GO:0042267", "GO:0042268", 
+     "GO:0042269", "GO:0042270")) |> dplyr::select(id, ontology, label)
 ```
 
 A shortcut for term lookup:
@@ -54,7 +69,7 @@ in the Semantic SQL representation of GO.
 ```{r doanc}
 go_ancestors("GO:0006954", relations = GO_RELATIONS["is_a"]) |>
   inner_join(
-    go_terms() |> select(ancestor_id = id, label),
+    go_terms() |> dplyr::select(ancestor_id = id, label),
     by = "ancestor_id"
   )
 ```
@@ -64,7 +79,7 @@ go_ancestors("GO:0006954", relations = GO_RELATIONS["is_a"]) |>
 ```{r dodesc}
 go_descendants("GO:0006954", relations = GO_RELATIONS["is_a"]) |>
   inner_join(
-    go_terms() |> select(descendant_id = id, label),
+    go_terms() |> dplyr::select(descendant_id = id, label),
     by = "descendant_id"
   )
 ```
@@ -90,8 +105,30 @@ To express certain concepts *precisely*, references to external ontologies
 are employed.  
 
 ```{r lkee}
-go_entailed_edges() |> select(predicate) |> 
-   group_by(predicate) |> summarise(n=n())
+go_entailed_edges() |> dplyr::select(predicate) |> 
+   group_by(predicate) |> summarise(n=n()) |>
+   arrange(desc(n))
+```
+
+Let's check on the interpretation of a few of these
+frequently encountered CURIEs.
+
+### Some lookups in Relational Ontology
+
+```{r lknew}
+roref = semsql_connect(ontology="ro")
+goref = semsql_connect(ontology="go")
+tbl(roref@con, "rdfs_label_statement") |> filter(subject %in% c("RO:0002131", "RO:0000057",
+   "RO:0018038")) |> as.data.frame() |> DT::datatable()
+```
+
+### Some lookups for Basic Formal Ontology
+
+The BFO statement tables are not illuminating with respect to
+definitions.
+```{r lkbfo}
+tbl(goref@con, "rdfs_label_statement") |> filter(subject %in% c("BFO:0000050", "BFO:0000051")) |>
+  as.data.frame() |> DT::datatable()
 ```
 
 ## Decoding external predicate CURIEs
@@ -129,4 +166,46 @@ bspo_ref = semsql_connect(ontology="bspo")
 bspo_ref
 tbl(bspo_ref@con, "statements") |> filter(subject=="BSPO:0000098")  |> 
    collect() |> datatable()
+```
+
+# Migrating from GO.db
+
+## AnnotationDbi "select"
+
+The `select` procedure of AnnotationDbi can be replaced by a filter
+on `go_terms`.
+```{r lkgodb}
+library(GO.db)
+AnnotationDbi::select(GO.db, keys="GO:0006954", 
+  columns=c("TERM", "DEFINITION", "ONTOLOGY"))
+```
+
+Similar content is provided using `go_terms`:
+```{r doddb}
+GO.ddb::go_terms() |> filter(id == "GO:0006954") |> as.data.frame()
+```
+
+## Environments
+
+The GO.db package includes environments for efficient
+management of key-value pairs.
+
+We'll illustrate migration activities for one, the
+management of generalization of a selected concept.
+Here we use GO:0000112, denoting nucleotide-excision
+repair factor 3 complex.
+
+```{r lk1env}
+ls("package:GO.db")
+get("GO:0000112", GOCCANCESTOR)
+```
+
+We use `go_ancestors` to obtain this information.
+```{r do112}
+lk112 = go_ancestors("GO:0000112") |> as.data.frame()
+lk112
+```
+Filtering down to the relevant GO terms:
+```{r cont112}
+lk112 |> dplyr::filter(grepl("^GO:", ancestor_id))
 ```
