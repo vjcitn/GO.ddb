@@ -41,6 +41,7 @@ Tidyverse practices are supported.  Within the database,
 the GO [CURIE](https://en.wikipedia.org/wiki/CURIE) is in the `id` column.
 ```{r lk1, message=FALSE}
 library(GO.ddb)
+library(ontoProc2)
 library(dplyr)
 go_terms()
 ```
@@ -191,9 +192,15 @@ The GO.db package includes environments for efficient
 management of key-value pairs.
 
 We'll illustrate migration activities for one, the
-management of generalization of a selected concept.
+management of generalization of a selected concept via
+traversal of the GO graph.
 Here we use GO:0000112, denoting nucleotide-excision
-repair factor 3 complex.
+repair factor 3 complex.  A view of the graph is provided here.
+Note that we do not include in this example any edges
+other than "is a" and "part of", although other
+edge types can be explored with the "entailed_edge" table.
+
+![QuickGO view](./GO0000112.jpg)
 
 ```{r lk1env}
 ls("package:GO.db")
@@ -209,3 +216,11 @@ Filtering down to the relevant GO terms:
 ```{r cont112}
 lk112 |> dplyr::filter(grepl("^GO:", ancestor_id))
 ```
+
+In summary, migration of AnnotationDbi-dependent code
+should be possible, although different functions and
+data structures will be encountered.  If a particular
+legacy computation seems infeasible with GO.ddb, please
+raise an issue.  We do not plan to *update* AnnotationDbi
+or GO.db in Bioconductor 3.24 or beyond, although the
+GO.db package will remain available with 2026 content.
