@@ -1,6 +1,6 @@
 Package: GO.ddb
 Title: Tidy Interface to GO Semantic SQL via DuckDB
-Version: 0.99.2
+Version: 0.99.3
 Authors@R: 
     c(person("Vincent", "Carey", email = "stvjc@channing.harvard.edu",
            role = c("aut", "cre"),
@@ -16,7 +16,7 @@ Encoding: UTF-8
 Depends: R (>= 4.1.0)
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-biocViews: Annotation, GO, OntologyLookup
+biocViews: Annotation, GO, Ontology
 Imports:
     ontoProc2,
     duckdb,
