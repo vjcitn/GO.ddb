@@ -224,3 +224,49 @@ legacy computation seems infeasible with GO.ddb, please
 raise an issue.  We do not plan to *update* AnnotationDbi
 or GO.db in Bioconductor 3.24 or beyond, although the
 GO.db package will remain available with 2026 content.
+
+# Additional examples
+
+## Term to descendant ids
+
+Here's a simple function to search for a regular
+expression in the ontology.
+
+```{r lkgoids}
+go_ids = function (regexpr, use = "label") 
+{
+    dplyr::filter(go_terms(), grepl(regexpr, !!sym(use)))
+}
+```
+
+We use this to enumerate specialized concepts related to "gonad development".
+```{r lkdesc}
+library(duckplyr)
+gd = go_ids("gonad development") |>
+  dplyr::select(id) |>
+  collect() |>
+  pull(id) |>
+  go_descendants(include_self=TRUE) |>
+  left_join(go_terms(), by = c("descendant_id" = "id")) |>
+  dplyr::select(id = descendant_id, label)
+gd
+```
+
+## Term to human genes
+
+This section depends on the availability of an experimental package.
+To get it, use `BiocManager::install("vjcitn/GOAnno4Bioc")`.
+
+Briefly `get_gaf` obtains a representation of the 
+[Gene Annotation Format](https://geneontology.org/docs/go-annotation-file-gaf-format-2.2/)
+resource for a model organism.  We get a lazy representation of this
+resource, filter it to the GO terms derived in the previous
+section, and report on the distinct genes and aspects of the
+annotation assertions.
+```{r lkmap}
+if (requireNamespace("GOAnno4Bioc")) {
+  hu = GOAnno4Bioc::get_gaf("human")
+  hulim = inner_join( hu, gd, by=c(go_id="id"), copy=TRUE, relationship = "many-to-many") |>
+      dplyr::select(-db_reference,-evidence_code,-with_or_from,-date,-assigned_by) |> distinct()
+  hulim
+}
